@@ -1,0 +1,18 @@
+version: '3.7'
+
+services:
+  hydra:
+    image: oryd/hydra:latest
+    environment:
+      - DSN=memory
+      - URLS_SELF_ISSUER=http://localhost:4444/
+      - URLS_CONSENT=http://localhost:3000/consent
+      - URLS_LOGIN=http://localhost:3000/login
+      - OAUTH2_CLIENT_REGISTRATION_ENABLED=true
+      - OIDC_DYNAMIC_CLIENT_REGISTRATION_DEFAULT_GRANT_TYPES=password,refresh_token
+      - OIDC_DYNAMIC_CLIENT_REGISTRATION_DEFAULT_SCOPE=openid,offline
+      - OIDC_DYNAMIC_CLIENT_REGISTRATION_DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD=client_secret_basic
+    ports:
+      - "4444:4444"  # Public port
+      - "4445:4445"  # Admin port
+    command: serve all --dev
