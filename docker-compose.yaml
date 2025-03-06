@@ -1,18 +1,136 @@
 version: '3.7'
 
 services:
-  hydra:
-    image: oryd/hydra:latest
+  # Ory Hydra - OAuth2 & OpenID Connect Server
+  hydra-db:
+    image: postgres:13-alpine
     environment:
-      - DSN=memory
-      - URLS_SELF_ISSUER=http://localhost:4444/
-      - URLS_CONSENT=http://localhost:3000/consent
-      - URLS_LOGIN=http://localhost:3000/login
-      - OAUTH2_CLIENT_REGISTRATION_ENABLED=true
-      - OIDC_DYNAMIC_CLIENT_REGISTRATION_DEFAULT_GRANT_TYPES=password,refresh_token
-      - OIDC_DYNAMIC_CLIENT_REGISTRATION_DEFAULT_SCOPE=openid,offline
-      - OIDC_DYNAMIC_CLIENT_REGISTRATION_DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD=client_secret_basic
+      - POSTGRES_USER=hydra
+      - POSTGRES_PASSWORD=secret
+      - POSTGRES_DB=hydra
+    volumes:
+      - hydra-data:/var/lib/postgresql/data
+    networks:
+      - ory-network
+
+  hydra-migrate:
+    image: oryd/hydra:v2.1.1
+    depends_on:
+      - hydra-db
+    environment:
+      - DSN=postgres://hydra:secret@hydra-db:5432/hydra?sslmode=disable
+    command: migrate sql -e --yes
+    restart: on-failure
+    networks:
+      - ory-network
+
+  hydra:
+    image: oryd/hydra:v2.1.1
+    depends_on:
+      - hydra-migrate
     ports:
-      - "4444:4444"  # Public port
-      - "4445:4445"  # Admin port
+      - "4444:4444" # Public port
+      - "4445:4445" # Admin port
+    environment:
+      - DSN=postgres://hydra:secret@hydra-db:5432/hydra?sslmode=disable
+      - SERVE_PUBLIC_PORT=4444
+      - SERVE_ADMIN_PORT=4445
+      - URLS_SELF_ISSUER=http://localhost:4444/
+      - URLS_LOGIN=http://localhost:4455/login
+      - URLS_CONSENT=http://localhost:4455/consent
+      - SECRETS_SYSTEM=youReallyNeedToChangeThis
+      - OIDC_SUBJECT_IDENTIFIERS_SUPPORTED_TYPES=public,pairwise
+      - OIDC_SUBJECT_IDENTIFIERS_PAIRWISE_SALT=youReallyNeedToChangeThis
+      - STRATEGIES_ACCESS_TOKEN=jwt
+      - TTL_ACCESS_TOKEN=1h
+      - TTL_REFRESH_TOKEN=24h
     command: serve all --dev
+    restart: unless-stopped
+    networks:
+      - ory-network
+
+  # Ory Kratos - Identity & User Management
+  kratos-db:
+    image: postgres:13-alpine
+    environment:
+      - POSTGRES_USER=kratos
+      - POSTGRES_PASSWORD=secret
+      - POSTGRES_DB=kratos
+    volumes:
+      - kratos-data:/var/lib/postgresql/data
+    networks:
+      - ory-network
+
+  kratos-migrate:
+    image: oryd/kratos:v1.0.0
+    depends_on:
+      - kratos-db
+    environment:
+      - DSN=postgres://kratos:secret@kratos-db:5432/kratos?sslmode=disable
+      - COURIER_SMTP_CONNECTION_URI=smtps://test:test@mailslurper:1025/?skip_ssl_verify=true
+    volumes:
+      - type: bind
+        source: ./kratos
+        target: /etc/config/kratos
+    command: -c /etc/config/kratos/kratos.yml migrate sql -e --yes
+    restart: on-failure
+    networks:
+      - ory-network
+
+  kratos:
+    image: oryd/kratos:v1.0.0
+    depends_on:
+      - kratos-migrate
+      - mailslurper
+    ports:
+      - "4433:4433" # Public port
+      - "4434:4434" # Admin port
+    environment:
+      - DSN=postgres://kratos:secret@kratos-db:5432/kratos?sslmode=disable
+      - LOG_LEVEL=debug
+      - COURIER_SMTP_CONNECTION_URI=smtps://test:test@mailslurper:1025/?skip_ssl_verify=true
+    volumes:
+      - type: bind
+        source: ./kratos
+        target: /etc/config/kratos
+    command: serve -c /etc/config/kratos/kratos.yml --dev
+    restart: unless-stopped
+    networks:
+      - ory-network
+
+  # Mail server for development
+  mailslurper:
+    image: oryd/mailslurper:latest-smtps
+    ports:
+      - "4436:4436"
+      - "4437:4437"
+    networks:
+      - ory-network
+
+  # Application using Ory SDKs
+  app:
+    image: python:3.9-slim
+    depends_on:
+      - hydra
+      - kratos
+      - mailslurper
+    environment:
+      - HYDRA_ADMIN_URL=http://hydra:4445
+      - HYDRA_PUBLIC_URL=http://hydra:4444
+      - KRATOS_ADMIN_URL=http://kratos:4434
+      - KRATOS_PUBLIC_URL=http://kratos:4433
+      - COURIER_SMTP_CONNECTION_URI=smtps://test:test@mailslurper:1025/?skip_ssl_verify=true
+    volumes:
+      - ./:/app
+    working_dir: /app
+    command: bash -c "pip install requests && python main.py"
+    restart: on-failure
+    networks:
+      - ory-network
+
+networks:
+  ory-network:
+
+volumes:
+  hydra-data:
+  kratos-data:
