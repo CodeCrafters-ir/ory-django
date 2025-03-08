@@ -1,0 +1,97 @@
+version: '3.7'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=ory
+      - POSTGRES_PASSWORD=ory_password
+      - POSTGRES_DB=ory
+      - POSTGRES_MULTIPLE_DATABASES=hydra,kratos
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-multiple-postgres-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-postgres-dbs.sh
+    networks:
+      - ory_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  hydra-migrate:
+    image: oryd/hydra:v2.2.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DSN=postgres://ory:ory_password@postgres:5432/hydra?sslmode=disable
+    command: migrate sql -e --yes
+    networks:
+      - ory_network
+    restart: on-failure
+
+  hydra:
+    image: oryd/hydra:v2.2.0
+    depends_on:
+      hydra-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "4444:4444" # Public API
+      - "4445:4445" # Admin API
+    environment:
+      - DSN=postgres://ory:ory_password@postgres:5432/hydra?sslmode=disable
+      - SERVE_PUBLIC_PORT=4444
+      - SERVE_ADMIN_PORT=4445
+      - URLS_SELF_ISSUER=http://localhost:4444/
+      - URLS_CONSENT=http://localhost:3000/consent
+      - URLS_LOGIN=http://localhost:3000/login
+      - SECRETS_SYSTEM=youReallyNeedToChangeThis
+      - OIDC_SUBJECT_IDENTIFIERS_SUPPORTED_TYPES=public,pairwise
+      - OIDC_SUBJECT_IDENTIFIERS_PAIRWISE_SALT=youReallyNeedToChangeThis
+      - LOG_LEVEL=debug
+    networks:
+      - ory_network
+    restart: unless-stopped
+    command: serve all --dev
+
+  kratos-migrate:
+    image: oryd/kratos:v1.0.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DSN=postgres://ory:ory_password@postgres:5432/kratos?sslmode=disable
+    volumes:
+      - ./config/kratos:/etc/config/kratos
+    command: migrate sql -e --yes
+    networks:
+      - ory_network
+    restart: on-failure
+
+  kratos:
+    image: oryd/kratos:v1.0.0
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "4433:4433" # Public API
+      - "4434:4434" # Admin API
+    environment:
+      - DSN=postgres://ory:ory_password@postgres:5432/kratos?sslmode=disable
+      - LOG_LEVEL=debug
+    volumes:
+      - ./config/kratos:/etc/config/kratos
+    networks:
+      - ory_network
+    restart: unless-stopped
+    command: serve -c /etc/config/kratos/kratos.yml --dev
+
+networks:
+  ory_network:
+    external: true
+
+volumes:
+  postgres-data:

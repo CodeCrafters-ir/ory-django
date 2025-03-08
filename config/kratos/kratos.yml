@@ -1,12 +1,26 @@
 version: v1.0.0
 
-dsn: postgres://ory:ory_password@postgres:5432/kratos?sslmode=disable
+dsn: postgres://ory:ory_password@ory_postgres:5432/kratos?sslmode=disable
 
 serve:
   public:
     base_url: http://localhost:4433/
     cors:
       enabled: true
+      allowed_origins:
+        - http://localhost:3000
+      allowed_methods:
+        - POST
+        - GET
+        - PUT
+        - PATCH
+        - DELETE
+      allowed_headers:
+        - Authorization
+        - Content-Type
+      exposed_headers:
+        - Content-Type
+      allow_credentials: true
   admin:
     base_url: http://localhost:4434/
 
@@ -72,7 +86,3 @@ identity:
   schemas:
     - id: default
       url: file:///etc/config/kratos/identity.schema.json
-
-courier:
-  smtp:
-    connection_uri: smtps://test:test@mailslurper:1025/?skip_ssl_verify=true
