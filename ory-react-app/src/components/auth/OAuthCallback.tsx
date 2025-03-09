@@ -1,67 +1,71 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import axios from 'axios';
 import { CircularProgress, Container, Typography, Alert, Paper, Box } from '@mui/material';
+import { exchangeCodeForTokens } from '../../services/oauth';
 
-// Configuration constants - match these with your backend
-const HYDRA_PUBLIC_URL = 'http://localhost:4444';
-const REDIRECT_URI = 'http://localhost:3000/callback';
-const CLIENT_ID = process.env.REACT_APP_CLIENT_ID; // Set this in your .env file
-
-const OAuthCallback = () => {
+const OAuthCallback: React.FC = () => {
     const [status, setStatus] = useState('processing');
     const [error, setError] = useState<string | null>(null);
-    const [tokens, setTokens] = useState(null);
     const navigate = useNavigate();
     const location = useLocation();
 
+    console.log('OAuthCallback component rendered');
+    console.log('Current location:', location);
+    console.log('Query params:', new URLSearchParams(location.search).toString());
+
     useEffect(() => {
+        console.log('OAuthCallback useEffect triggered');
+
         const handleCallback = async () => {
             try {
+                console.log('Starting callback handler...');
                 const query = new URLSearchParams(location.search);
                 const code = query.get('code');
                 const state = query.get('state');
+                const storedState = localStorage.getItem('oauth_state');
+
+                console.log('Code from URL:', code);
+                console.log('State from URL:', state);
+                console.log('State from localStorage:', storedState);
 
                 if (!code) {
+                    console.error('No authorization code received in the URL');
                     setStatus('error');
                     setError('No authorization code received');
                     return;
                 }
 
-                // Exchange code for tokens
-                const tokenData = new URLSearchParams();
-                tokenData.append('grant_type', 'authorization_code');
-                tokenData.append('code', code);
-                tokenData.append('redirect_uri', REDIRECT_URI);
-                tokenData.append('client_id', CLIENT_ID || '');
+                if (state !== storedState) {
+                    console.error('State mismatch. Possible CSRF attack');
+                    setStatus('error');
+                    setError('Security validation failed');
+                    return;
+                }
 
-                // Note: In a production app, you'd want to exchange the code on your backend
-                // to avoid exposing the client secret in the frontend
-                const response = await axios.post(
-                    `${HYDRA_PUBLIC_URL}/oauth2/token`,
-                    tokenData,
-                    {
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded'
-                        }
+                console.log('Exchanging code for tokens...');
+
+                try {
+                    const tokens = await exchangeCodeForTokens(code);
+
+                    console.log('Tokens received successfully:', tokens);
+
+                    // Store in localStorage for demo purposes (NOT secure for production)
+                    localStorage.setItem('access_token', tokens.access_token);
+                    localStorage.setItem('refresh_token', tokens.refresh_token);
+                    if (tokens.id_token) {
+                        localStorage.setItem('id_token', tokens.id_token);
                     }
-                );
 
-                // Store tokens securely
-                const receivedTokens = response.data;
+                    setStatus('success');
 
-                // In a real app, you'd store these tokens securely (e.g., httpOnly cookies via your backend)
-                // For this demo, we're just setting in state (NOT recommended for production)
-                setTokens(receivedTokens);
-                setStatus('success');
-
-                // Store in localStorage for demo purposes (NOT secure for production)
-                localStorage.setItem('access_token', receivedTokens.access_token);
-                localStorage.setItem('refresh_token', receivedTokens.refresh_token);
-                localStorage.setItem('id_token', receivedTokens.id_token);
-
-                // Redirect to dashboard after short delay
-                setTimeout(() => navigate('/dashboard'), 2000);
+                    console.log('Tokens stored, redirecting to dashboard in 2 seconds');
+                    // Redirect to dashboard after short delay
+                    setTimeout(() => navigate('/dashboard'), 2000);
+                } catch (error: any) {
+                    console.error('Error during token exchange API call:', error);
+                    console.error('Error response:', error.response?.data);
+                    throw error;
+                }
             } catch (err: any) {
                 console.error('Token exchange error:', err);
                 setStatus('error');
@@ -78,6 +82,14 @@ const OAuthCallback = () => {
                 <Paper sx={{ p: 4, width: '100%' }}>
                     <Typography variant="h5" component="h1" gutterBottom align="center">
                         OAuth Authorization
+                    </Typography>
+
+                    <Typography variant="body1" paragraph>
+                        Current status: {status}
+                    </Typography>
+
+                    <Typography variant="body2" paragraph>
+                        URL: {window.location.href}
                     </Typography>
 
                     {status === 'processing' && (

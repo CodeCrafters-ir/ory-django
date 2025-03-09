@@ -16,6 +16,8 @@ const OAuthLoginButton: React.FC<OAuthButtonProps> = ({
                                                           className,
                                                       }) => {
     const handleOAuthLogin = () => {
+        alert("OAuth login button clicked!");
+        console.log("Initiating OAuth flow...");
         initiateOAuth2Flow();
     };
 
