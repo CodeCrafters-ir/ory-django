@@ -89,7 +89,7 @@ END
 cat > config/kratos/kratos.yml << 'END'
 version: v1.0.0
 
-dsn: postgres://ory:ory_password@ory_postgres:5432/kratos?sslmode=disable
+dsn: postgres://ory:ory_password@postgres:5432/kratos?sslmode=disable
 
 serve:
   public:
@@ -175,6 +175,10 @@ identity:
   schemas:
     - id: default
       url: file:///etc/config/kratos/identity.schema.json
+courier:
+  smtp:
+    connection_uri: smtps://test:test@mailslurper:1025/?skip_ssl_verify=true
+    from_address: no-reply@example.com
 END
 
 echo "Configuration files created."
@@ -189,7 +193,7 @@ sleep 10
 echo "Running Hydra migrations..."
 docker run --rm \
   --network ory_network \
-  -e DSN=postgres://ory:ory_password@ory_postgres:5432/hydra?sslmode=disable \
+  -e DSN=postgres://ory:ory_password@postgres:5432/hydra?sslmode=disable \
   oryd/hydra:v2.2.0 \
   migrate sql -e --yes
 
@@ -197,7 +201,7 @@ echo "Running Kratos migrations..."
 docker run --rm \
   --network ory_network \
   -v $(pwd)/config/kratos:/etc/config/kratos \
-  -e DSN=postgres://ory:ory_password@ory_postgres:5432/kratos?sslmode=disable \
+  -e DSN=postgres://ory:ory_password@postgres:5432/kratos?sslmode=disable \
   oryd/kratos:v1.0.0 \
   migrate sql -e --yes
 

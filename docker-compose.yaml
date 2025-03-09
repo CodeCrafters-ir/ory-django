@@ -85,12 +85,21 @@ services:
     environment:
       - DSN=postgres://ory:ory_password@postgres:5432/kratos?sslmode=disable
       - LOG_LEVEL=debug
+      - COURIER_SMTP_CONNECTION_URI=smtps://test:test@mailslurper:1025/?skip_ssl_verify=true
     volumes:
       - ./config/kratos:/etc/config/kratos
     networks:
       - ory_network
     restart: unless-stopped
     command: serve -c /etc/config/kratos/kratos.yml --dev
+  mailslurper:
+    image: mailslurper/mailslurper
+    ports:
+      - "1025:1025"
+      - "8080:8080"
+    networks:
+      - ory_network
+    restart: unless-stopped
 
 networks:
   ory_network:

@@ -1,6 +1,6 @@
 version: v1.0.0
 
-dsn: postgres://ory:ory_password@ory_postgres:5432/kratos?sslmode=disable
+dsn: postgres://ory:ory_password@postgres:5432/kratos?sslmode=disable
 
 serve:
   public:
@@ -86,3 +86,7 @@ identity:
   schemas:
     - id: default
       url: file:///etc/config/kratos/identity.schema.json
+courier:
+  smtp:
+    connection_uri: smtps://test:test@mailslurper:1025/?skip_ssl_verify=true
+    from_address: no-reply@example.com
